@@ -1768,7 +1768,7 @@ pub(crate) mod tests {
     use risingwave_common::util::epoch::EpochExt;
     use risingwave_hummock_sdk::HummockEpoch;
     use risingwave_hummock_sdk::vector_index::{
-        FlatIndexAdd, VectorFileInfo, VectorIndexAdd, VectorStoreDelta,
+        FlatIndexAdd, VectorFileInfo, VectorIndexAdd, VectorStoreInfoDelta,
     };
     use tokio::sync::oneshot;
 
@@ -1885,7 +1885,7 @@ pub(crate) mod tests {
             meta_offset: 20,
         };
         let vector_index_add = VectorIndexAdd::Flat(FlatIndexAdd {
-            vector_store_delta: VectorStoreDelta {
+            vector_store_info_delta: VectorStoreInfoDelta {
                 next_vector_id: 1,
                 added_vector_files: vec![vector_info_file.clone()],
             },

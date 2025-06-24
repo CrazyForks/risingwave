@@ -31,7 +31,7 @@ class TestPsycopgExtendedMode(unittest.TestCase):
                 self.assertEqual(cur.fetchone(), ('hello', None))
 
                 # Date/Time types
-                cur.execute("select '2023-01-01'::date, '12:34:56'::time, '2023-01-01 12:34:56'::timestamp, '2023-01-01 12:34:56+00'::timestamptz", binary=True)
+                cur.execute("select '2023-01-01'::date, '12:34:56'::time, '2023-01-01 12:34:56'::timestamp, '2023-01-01 12:34:57+00'::timestamptz", binary=True)
                 self.assertEqual(cur.fetchone(), (datetime.date(2023, 1, 1), datetime.time(12, 34, 56), datetime.datetime(2023, 1, 1, 12, 34, 56), datetime.datetime(2023, 1, 1, 20, 34, 56, tzinfo=zoneinfo.ZoneInfo(key='Asia/Shanghai'))))
 
                 # Interval

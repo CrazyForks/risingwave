@@ -28,7 +28,7 @@ use crate::dispatch_measurement;
 use crate::hummock::vector::file::VectorFileBuilder;
 use crate::hummock::vector::writer::{VectorObjectIdManagerRef, new_vector_file_builder};
 use crate::hummock::vector::{EnumVectorAccessor, get_vector_block};
-use crate::hummock::{HummockError, HummockResult, SstableStoreRef};
+use crate::hummock::{HummockResult, SstableStoreRef};
 use crate::opts::StorageOpts;
 use crate::store::Vector;
 use crate::vector::DistanceMeasurement;
@@ -39,10 +39,6 @@ use crate::vector::hnsw::{
 struct HnswVectorStore {
     sstable_store: SstableStoreRef,
 
-    committed_vector_files: Vec<VectorFileInfo>,
-    committed_next_vector_id: usize,
-    sealed_vector_files: Vec<VectorFileInfo>,
-    sealed_next_vector_id: usize,
     flushed_vector_files: Vec<VectorFileInfo>,
     flushed_next_vector_id: usize,
     building_vectors: VectorFileBuilder,
@@ -59,11 +55,7 @@ impl HnswVectorStore {
         let next_vector_id = index.vector_store_info.next_vector_id;
         Self {
             sstable_store: sstable_store.clone(),
-            committed_vector_files: index.vector_store_info.vector_files.clone(),
-            committed_next_vector_id: next_vector_id,
-            sealed_vector_files: vec![],
-            sealed_next_vector_id: next_vector_id,
-            flushed_vector_files: vec![],
+            flushed_vector_files: index.vector_store_info.vector_files.clone(),
             flushed_next_vector_id: next_vector_id,
             building_vectors: new_vector_file_builder(
                 dimension,
@@ -96,26 +88,12 @@ impl VectorStore for HnswVectorStore {
         Self: 'a;
 
     async fn get_vector(&self, idx: usize) -> HummockResult<Self::Accessor<'_>> {
-        if idx < self.committed_next_vector_id {
-            Ok(EnumVectorAccessor::BloclHolder(
-                get_vector_block(&self.sstable_store, &self.committed_vector_files, idx).await?,
-            ))
-        } else if idx < self.sealed_next_vector_id {
-            Ok(EnumVectorAccessor::BloclHolder(
-                get_vector_block(&self.sstable_store, &self.sealed_vector_files, idx).await?,
-            ))
-        } else if idx < self.flushed_next_vector_id {
-            Ok(EnumVectorAccessor::BloclHolder(
+        if idx < self.flushed_next_vector_id {
+            Ok(EnumVectorAccessor::BlockHolder(
                 get_vector_block(&self.sstable_store, &self.flushed_vector_files, idx).await?,
             ))
-        } else if idx < self.building_vectors.next_vector_id() {
-            self.building_vectors.get_vector(idx)
         } else {
-            Err(HummockError::other(format!(
-                "Index {} out of bounds for all vector {}",
-                idx,
-                self.building_vectors.next_vector_id()
-            )))
+            Ok(self.building_vectors.get_vector(idx))
         }
     }
 }
@@ -184,10 +162,6 @@ impl HnswFlatIndexWriter {
             return None;
         }
         let flushed_vector_files = take(&mut self.vector_store.flushed_vector_files);
-        self.vector_store.sealed_next_vector_id = self.vector_store.flushed_next_vector_id;
-        self.vector_store
-            .sealed_vector_files
-            .extend(flushed_vector_files.iter().cloned());
         let new_graph_info = self
             .flushed_graph_file
             .take()
@@ -248,7 +222,7 @@ impl HnswFlatIndexWriter {
                         &self.vector_store,
                         graph_builder,
                         node,
-                        self.vector_store.building_vectors.get_vector(i)?.vec_ref(),
+                        self.vector_store.building_vectors.get_vector(i).vec_ref(),
                         self.options.ef_construction,
                     )
                     .await?;

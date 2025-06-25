@@ -12,12 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::sync::Arc;
-
-use risingwave_common::util::value_encoding::BasicSerde;
 use risingwave_pb::stream_plan::VectorIndexWriteNode;
 use risingwave_storage::StateStore;
-use risingwave_storage::row_serde::value_serde::ValueRowSerdeNew;
 
 use crate::error::StreamResult;
 use crate::executor::{Executor, VectorIndexWriteExecutor};
@@ -35,10 +31,6 @@ impl ExecutorBuilder for VectorIndexWriteExecutorBuilder {
         store: impl StateStore,
     ) -> StreamResult<Executor> {
         let [input]: [_; 1] = params.input.try_into().unwrap();
-        let serde = BasicSerde::new(
-            Arc::from_iter(node.info_column_indices.iter().map(|val| *val as usize)),
-            Arc::from_iter(node.info_column_desc.iter().map(|desc| desc.into())),
-        );
         let vector_column_id = node.vector_column_idx as usize;
         let info_column_ids = node
             .info_column_indices
@@ -46,9 +38,8 @@ impl ExecutorBuilder for VectorIndexWriteExecutorBuilder {
             .map(|&id| id as usize)
             .collect();
 
-        let executor = VectorIndexWriteExecutor::<_, BasicSerde>::new(
+        let executor = VectorIndexWriteExecutor::<_>::new(
             input,
-            serde,
             store,
             node.table_id.into(),
             vector_column_id,

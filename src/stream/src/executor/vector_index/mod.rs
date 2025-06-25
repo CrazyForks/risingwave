@@ -17,8 +17,8 @@ use futures::TryStreamExt;
 use risingwave_common::array::Op;
 use risingwave_common::catalog::TableId;
 use risingwave_common::row::{Row, RowExt};
+use risingwave_common::util::value_encoding::{BasicSerializer, ValueRowSerializer};
 use risingwave_storage::StateStore;
-use risingwave_storage::row_serde::value_serde::ValueRowSerde;
 use risingwave_storage::store::{
     InitOptions, NewVectorWriterOptions, SealCurrentEpochOptions, StateStoreWriteEpochControl,
     StateStoreWriteVector,
@@ -31,26 +31,25 @@ use crate::executor::{
     expect_first_barrier,
 };
 
-pub struct VectorIndexWriteExecutor<S: StateStore, SD: ValueRowSerde> {
+pub struct VectorIndexWriteExecutor<S: StateStore> {
     input: Executor,
     vector_writer: S::VectorWriter,
-    serde: SD,
+    serializer: BasicSerializer,
     _store: S,
 
     vector_column_id: usize,
     info_column_ids: Vec<usize>,
 }
 
-impl<S: StateStore, SD: ValueRowSerde> Execute for VectorIndexWriteExecutor<S, SD> {
+impl<S: StateStore> Execute for VectorIndexWriteExecutor<S> {
     fn execute(self: Box<Self>) -> BoxedMessageStream {
         Box::pin(self.execute_inner())
     }
 }
 
-impl<S: StateStore, SD: ValueRowSerde> VectorIndexWriteExecutor<S, SD> {
+impl<S: StateStore> VectorIndexWriteExecutor<S> {
     pub async fn new(
         input: Executor,
-        serde: SD,
         store: S,
         table_id: TableId,
         vector_column_id: usize,
@@ -63,7 +62,7 @@ impl<S: StateStore, SD: ValueRowSerde> VectorIndexWriteExecutor<S, SD> {
             input,
             _store: store,
             vector_writer,
-            serde,
+            serializer: BasicSerializer,
             vector_column_id,
             info_column_ids,
         })
@@ -113,7 +112,7 @@ impl<S: StateStore, SD: ValueRowSerde> VectorIndexWriteExecutor<S, SD> {
                         let vector = vector_datum.into_vector();
                         let vector = Vector::new(vector.into_slice());
                         let info = self
-                            .serde
+                            .serializer
                             .serialize(row.project(&self.info_column_ids))
                             .into();
                         self.vector_writer.insert(vector, info)?;

@@ -1736,6 +1736,8 @@ impl CatalogController {
         for (actor_id, new_worker_id) in actor_migration_plan {
             // actor moving
             if let Some(model) = actor_cache.models.get_mut(&actor_id) {
+                println!("moving actor {} to {}", actor_id, new_worker_id);
+
                 // remove actor_id from the old worker's list
                 if let Some(list) = actor_cache.actors_by_worker_id.get_mut(&model.worker_id) {
                     list.retain(|&id| id != actor_id);

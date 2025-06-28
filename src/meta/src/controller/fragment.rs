@@ -14,6 +14,7 @@
 
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::ops::Sub;
 
 use anyhow::{Context, anyhow};
 use futures::{StreamExt, TryStreamExt};
@@ -2338,6 +2339,11 @@ impl CatalogController {
             let set_db: HashSet<(ActorId, WorkerId)> = actors_from_db.into_iter().collect();
             let set_cache: HashSet<(ActorId, WorkerId)> =
                 actors_from_cache.iter().copied().collect();
+
+            if set_db != set_cache {
+                println!("db - cache {:?}", set_db.sub(&set_cache));
+                println!("cache - db {:?}", set_cache.sub(&set_db));
+            }
 
             debug_assert_eq!(
                 set_db, set_cache,

@@ -1344,6 +1344,8 @@ impl DdlController {
             .drop_object(object_type, object_id, drop_mode)
             .await?;
 
+        println!("release context for {} {:#?}", object_id, release_ctx);
+
         if let Some(replace_table_info) = target_replace_info {
             let stream_ctx =
                 StreamContext::from_protobuf(replace_table_info.fragment_graph.get_ctx().unwrap());
@@ -1500,11 +1502,10 @@ impl DdlController {
                 dropped_actors,
             })
             .await;
-
-        self.metadata_manager
-            .catalog_controller
-            .drop_actors_in_cache(removed_actors.iter().map(|id| *id as _).collect())
-            .await?;
+        // self.metadata_manager
+        //     .catalog_controller
+        //     .drop_actors_in_cache(removed_actors.iter().map(|id| *id as _).collect())
+        //     .await?;
 
         // remove secrets.
         for secret in secret_ids {

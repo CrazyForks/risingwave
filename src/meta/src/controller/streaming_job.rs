@@ -1025,6 +1025,8 @@ impl CatalogController {
 
         let fragment_mapping = get_fragment_mappings_txn(&txn, &inner.actors, job_id).await?;
 
+        let mut old_fragment_ids = None;
+
         let replace_table_mapping_update = match replace_stream_job_info {
             Some(ReplaceStreamJobPlan {
                 streaming_job,
@@ -1034,20 +1036,23 @@ impl CatalogController {
             }) => {
                 let incoming_sink_id = job_id;
 
-                let (relations, fragment_mapping, _) = Self::finish_replace_streaming_job_inner(
-                    tmp_id as ObjectId,
-                    replace_upstream,
-                    SinkIntoTableContext {
-                        creating_sink_id: Some(incoming_sink_id as _),
-                        dropping_sink_id: None,
-                        updated_sink_catalogs: vec![],
-                    },
-                    &txn,
-                    streaming_job,
-                    None, // will not drop table connector when creating a streaming job
-                    &inner.actors,
-                )
-                .await?;
+                let (relations, fragment_mapping, _, original_fragment_ids) =
+                    Self::finish_replace_streaming_job_inner(
+                        tmp_id as ObjectId,
+                        replace_upstream,
+                        SinkIntoTableContext {
+                            creating_sink_id: Some(incoming_sink_id as _),
+                            dropping_sink_id: None,
+                            updated_sink_catalogs: vec![],
+                        },
+                        &txn,
+                        streaming_job,
+                        None, // will not drop table connector when creating a streaming job
+                        &inner.actors,
+                    )
+                    .await?;
+
+                old_fragment_ids = Some(original_fragment_ids);
 
                 Some((relations, fragment_mapping))
             }
@@ -1058,6 +1063,12 @@ impl CatalogController {
             updated_user_info = grant_default_privileges_automatically(&txn, job_id).await?;
         }
         txn.commit().await?;
+
+        if let Some(original_fragment_ids) = old_fragment_ids {
+            inner
+                .actors
+                .drop_actors_by_fragments(&original_fragment_ids);
+        }
 
         self.notify_fragment_mapping(NotificationOperation::Add, fragment_mapping)
             .await;
@@ -1106,10 +1117,10 @@ impl CatalogController {
         sink_into_table_context: SinkIntoTableContext,
         drop_table_connector_ctx: Option<&DropTableConnectorContext>,
     ) -> MetaResult<NotificationVersion> {
-        let inner = self.inner.write().await;
+        let mut inner = self.inner.write().await;
         let txn = inner.db.begin().await?;
 
-        let (objects, fragment_mapping, delete_notification_objs) =
+        let (objects, fragment_mapping, delete_notification_objs, original_fragment_ids) =
             Self::finish_replace_streaming_job_inner(
                 tmp_id,
                 replace_upstream,
@@ -1122,6 +1133,10 @@ impl CatalogController {
             .await?;
 
         txn.commit().await?;
+
+        inner
+            .actors
+            .drop_actors_by_fragments(&original_fragment_ids);
 
         // FIXME: Do not notify frontend currently, because frontend nodes might refer to old table
         // catalog and need to access the old fragment. Let frontend nodes delete the old fragment
@@ -1166,6 +1181,7 @@ impl CatalogController {
         Vec<PbObject>,
         Vec<PbFragmentWorkerSlotMapping>,
         Option<(Vec<PbUserInfo>, Vec<PartialObject>)>,
+        Vec<FragmentId>,
     )> {
         let original_job_id = streaming_job.id() as ObjectId;
         let job_type = streaming_job.job_type();
@@ -1273,6 +1289,14 @@ impl CatalogController {
                 .await?;
             }
         }
+
+        let original_fragment_ids: Vec<FragmentId> = Fragment::find()
+            .select_only()
+            .column(fragment::Column::FragmentId)
+            .filter(fragment::Column::JobId.eq(original_job_id))
+            .into_tuple()
+            .all(txn)
+            .await?;
 
         // 1. replace old fragments/actors with new ones.
         Fragment::delete_many()
@@ -1386,7 +1410,12 @@ impl CatalogController {
                 Some(Self::drop_table_associated_source(txn, drop_table_connector_ctx).await?);
         }
 
-        Ok((objects, fragment_mapping, notification_objs))
+        Ok((
+            objects,
+            fragment_mapping,
+            notification_objs,
+            original_fragment_ids,
+        ))
     }
 
     /// Abort the replacing streaming job by deleting the temporary job object.

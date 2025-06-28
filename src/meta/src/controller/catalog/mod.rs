@@ -188,7 +188,7 @@ impl ActorInfo {
     }
 
     pub fn drop_actor(&mut self, actor_id: ActorId) {
-        println!("droping actor {}", actor_id);
+        println!("dropping actor {}", actor_id);
         debug_assert!(self.models.contains_key(&actor_id));
         let actor = self.models.remove(&actor_id).expect("actor not found");
         self.actors_by_fragment_id
@@ -201,9 +201,22 @@ impl ActorInfo {
             .retain(|&id| id != actor.actor_id);
     }
 
-    // pub fn get_actors_by_fragment(&self, fragment_id: FragmentId) -> Option<&Vec<ActorId>> {
-    //     self.actors_by_fragment_id.get(&fragment_id)
-    // }
+    pub fn drop_actors_by_fragments(&mut self, fragment_ids: &[FragmentId]) {
+        for fragment_id in fragment_ids {
+            let actor_ids = self
+                .actors_by_fragment_id
+                .remove(fragment_id)
+                .expect("fragment not found");
+
+            for actor_id in actor_ids {
+                self.drop_actor(actor_id);
+            }
+        }
+    }
+
+    pub fn get_actors_by_fragment(&self, fragment_id: FragmentId) -> Option<&Vec<ActorId>> {
+        self.actors_by_fragment_id.get(&fragment_id)
+    }
 
     /// Mutate an existing actor, re-indexing if its `fragment_id` or `worker_id` changes.
     pub fn mutate_actor<F>(&mut self, actor_id: ActorId, mutator: F)

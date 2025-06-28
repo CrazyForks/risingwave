@@ -1450,6 +1450,8 @@ impl DdlController {
             }?;
         }
 
+        println!("release ctx {:#?}", release_ctx);
+
         let ReleaseContext {
             database_id,
             removed_streaming_job_ids,

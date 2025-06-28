@@ -57,8 +57,9 @@ use risingwave_pb::stream_plan::{
 use sea_orm::ActiveValue::Set;
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ColumnTrait, DbErr, EntityTrait, FromQueryResult, JoinType, ModelTrait, PaginatorTrait,
-    QueryFilter, QuerySelect, RelationTrait, SelectGetableTuple, Selector, TransactionTrait, Value,
+    ColumnTrait, ConnectionTrait, DbErr, EntityTrait, FromQueryResult, JoinType, ModelTrait,
+    PaginatorTrait, QueryFilter, QuerySelect, RelationTrait, SelectGetableTuple, Selector,
+    TransactionTrait, Value,
 };
 use serde::{Deserialize, Serialize};
 use tracing::debug;
@@ -684,6 +685,23 @@ impl CatalogController {
             select
         };
         Ok(select.into_tuple().all(&inner.db).await?)
+    }
+
+    // no need to cache
+    pub async fn get_fragment_ids_by_job_ids(
+        &self,
+        txn: &impl ConnectionTrait,
+        job_id: &[ObjectId],
+    ) -> MetaResult<Vec<FragmentId>> {
+        let fragment_ids: Vec<FragmentId> = FragmentModel::find()
+            .select_only()
+            .column(fragment::Column::FragmentId)
+            .filter(fragment::Column::JobId.is_in(job_id.to_vec()))
+            .into_tuple()
+            .all(txn)
+            .await?;
+
+        Ok(fragment_ids)
     }
 
     pub async fn get_job_fragments_by_id(

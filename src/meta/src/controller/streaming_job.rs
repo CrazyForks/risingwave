@@ -578,6 +578,8 @@ impl CatalogController {
             objs.extend(internal_table_objs);
         }
 
+        let mut deleted_fragments = self.get_fragment_ids_by_job_ids(&txn, &[job_id]).await?;
+
         // Check if the job is creating sink into table.
         if table_obj.is_none()
             && let Some(Some(target_table_id)) = Sink::find_by_id(job_id)
@@ -609,6 +611,12 @@ impl CatalogController {
                     id = tmp_id,
                     "aborting temp streaming job for sink into table"
                 );
+
+                let deleted_tmp_fragments =
+                    self.get_fragment_ids_by_job_ids(&txn, &[tmp_id]).await?;
+
+                deleted_fragments.extend(deleted_tmp_fragments);
+
                 Object::delete_by_id(tmp_id).exec(&txn).await?;
             }
         }
@@ -644,6 +652,7 @@ impl CatalogController {
         }
         txn.commit().await?;
 
+        inner.actors.drop_actors_by_fragments(&deleted_fragments);
         if !objs.is_empty() {
             // We also have notified the frontend about these objects,
             // so we need to notify the frontend to delete them here.

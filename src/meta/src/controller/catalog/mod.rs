@@ -203,6 +203,7 @@ impl ActorInfo {
 
     pub fn drop_actors_by_fragments(&mut self, fragment_ids: &[FragmentId]) {
         for fragment_id in fragment_ids {
+            println!("dropping actors by fragment {}", fragment_id);
             let actor_ids = self
                 .actors_by_fragment_id
                 .remove(fragment_id)

@@ -248,12 +248,15 @@ impl ActorInfo {
 
 impl ActorInfo {
     pub async fn init_from_db(db: &DatabaseConnection) -> MetaResult<Self> {
+        println!("init from db");
         let actors: Vec<_> = Actor::find().all(db).await?;
 
         let actors: HashMap<_, _> = actors
             .into_iter()
             .map(|actor| (actor.actor_id, actor))
             .collect();
+
+        println!("actors {:?}", actors.keys());
 
         let mut actors_by_fragment_id = HashMap::new();
         let mut actors_by_worker_id = HashMap::new();
@@ -500,7 +503,7 @@ impl CatalogController {
         &self,
         database_id: Option<DatabaseId>,
     ) -> MetaResult<()> {
-        let inner = self.inner.write().await;
+        let mut inner = self.inner.write().await;
         let txn = inner.db.begin().await?;
         let filter_condition = object::Column::ObjType.eq(ObjectType::Subscription).and(
             object::Column::Oid.not_in_subquery(
@@ -520,11 +523,26 @@ impl CatalogController {
         } else {
             filter_condition
         };
+
+        let object_ids: Vec<ObjectId> = Object::find()
+            .select_only()
+            .column(object::Column::Oid)
+            .filter(filter_condition.clone())
+            .into_tuple()
+            .all(&txn)
+            .await?;
+
+        let dirty_fragment_ids = self.get_fragment_ids_by_job_ids(&txn, &object_ids).await?;
+
         Object::delete_many()
             .filter(filter_condition)
             .exec(&txn)
             .await?;
+
         txn.commit().await?;
+
+        inner.actors.drop_actors_by_fragments(&dirty_fragment_ids);
+
         // We don't need to notify the frontend, because the Init subscription is not send to frontend.
         Ok(())
     }
@@ -534,7 +552,7 @@ impl CatalogController {
         &self,
         database_id: Option<DatabaseId>,
     ) -> MetaResult<Vec<SourceId>> {
-        let inner = self.inner.write().await;
+        let mut inner = self.inner.write().await;
         let txn = inner.db.begin().await?;
 
         let filter_condition = streaming_job::Column::JobStatus.eq(JobStatus::Initial).or(
@@ -669,6 +687,10 @@ impl CatalogController {
             .all(&txn)
             .await?;
 
+        let dirty_fragment_ids = self
+            .get_fragment_ids_by_job_ids(&txn, &dirty_job_ids)
+            .await?;
+
         let to_delete_objs: HashSet<ObjectId> = dirty_job_ids
             .clone()
             .into_iter()
@@ -683,6 +705,8 @@ impl CatalogController {
         assert!(res.rows_affected > 0);
 
         txn.commit().await?;
+
+        inner.actors.drop_actors_by_fragments(&dirty_fragment_ids);
 
         let object_group = build_object_group_for_delete(
             dirty_mview_objs

@@ -466,6 +466,7 @@ impl CatalogController {
         for actors in actors.clone() {
             for actor in actors {
                 let actor = actor.into_active_model();
+                println!("inserting actor {:?}", actor.actor_id);
                 Actor::insert(actor).exec(&txn).await?;
             }
         }
@@ -484,6 +485,7 @@ impl CatalogController {
         }
 
         txn.commit().await?;
+        println!("prepare commit");
 
         // Add actors to cache
         for actor in actors.into_iter().flatten() {
@@ -508,6 +510,7 @@ impl CatalogController {
         job_id: ObjectId,
         is_cancelled: bool,
     ) -> MetaResult<(bool, Option<DatabaseId>)> {
+        println!("try aborting");
         let mut inner = self.inner.write().await;
         let txn = inner.db.begin().await?;
 
@@ -688,9 +691,11 @@ impl CatalogController {
         split_assignment: &SplitAssignment,
         is_mv: bool,
     ) -> MetaResult<()> {
+        println!("post collecting jb fragments for job {}", job_id);
         let mut inner = self.inner.write().await;
         let txn = inner.db.begin().await?;
 
+        println!("updating actor ids {:?}", actor_ids);
         Actor::update_many()
             .col_expr(
                 actor::Column::Status,

@@ -1154,9 +1154,19 @@ impl CatalogController {
                 .cloned()
                 .collect::<HashSet<_>>();
 
-            let actor_locations = actor_locations.iter().cloned().collect::<HashSet<_>>();
+            let actor_locations_from_cache =
+                actor_locations.iter().cloned().collect::<HashSet<_>>();
 
-            debug_assert_eq!(actor_locations, actor_locations_from_db);
+            println!(
+                "cache - db {:#?}",
+                actor_locations_from_cache.sub(&actor_locations_from_db)
+            );
+            println!(
+                "db - cache {:#?}",
+                actor_locations_from_db.sub(&actor_locations_from_cache)
+            );
+
+            debug_assert_eq!(actor_locations_from_cache, actor_locations_from_db);
         }
 
         Ok(actor_locations)
